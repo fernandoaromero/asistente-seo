@@ -15,3 +15,4 @@ Herramienta local de gestión de contenido para YouTube. Permite explorar tenden
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # En Linux/Mac
+   pip install -r requirements.txt
