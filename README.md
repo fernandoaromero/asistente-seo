@@ -1,4 +1,4 @@
-# Asistente SEO - Dashboard de Producción (v1.0)
+# Asistente SEO - Dashboard de Producción
 
 Herramienta local de gestión de contenido para YouTube. Permite explorar tendencias reales, generar estrategias de SEO con IA, gestionar guiones, crear carpetas de producción y subir videos automáticamente a YouTube.
 
