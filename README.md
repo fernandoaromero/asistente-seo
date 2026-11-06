@@ -15,4 +15,9 @@ Herramienta local de gestión de contenido para YouTube. Permite explorar tenden
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # En Linux/Mac
+3. Instala las dependencias:
+   ```bash
    pip install -r requirements.txt
+4. Configura las credenciales de YouTube:
+*   Descarga tu archivo client_secrets.json desde Google Cloud Console.
+*   Colócalo en la carpeta .seo/.
