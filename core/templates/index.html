@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistente SEO - Dashboard</title>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="navbar">
+        <div class="tab" onclick="cambiarTab('explorar', this)">🔍 Explorar Tendencias</div>
+        <div class="tab active" onclick="cambiarTab('produccion', this)">📺 Producción</div>
+        <div class="tab" onclick="cambiarTab('publicados', this)">✅ Publicados</div>
+        <div class="tab" onclick="cambiarTab('config', this)">⚙️ Configuración</div>
+    </div>
+
+    <div class="container" id="tab-explorar">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Explorar Tendencias</h1>
+            <button class="btn-primary" onclick="buscarTendencias()" id="btn-buscar">🚀 Buscar Tendencias</button>
+        </div>
+        <div id="loading-tendencias" style="display: none; text-align: center; margin-top: 50px;">
+            <div class="spinner"></div>
+            <p style="color: var(--text-muted); margin-top: 20px;">Buscando en YouTube...</p>
+        </div>
+        <div class="grid" id="grid-explorar"></div>
+    </div>
+
+    <div class="container active" id="tab-produccion">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h1>Panel de Producción</h1>
+            <button class="btn-secondary" onclick="abrirModalManual()">➕ Añadir Idea Manual</button>
+        </div>
+        <div class="grid" id="grid-produccion"></div>
+    </div>
+
+    <div class="container" id="tab-publicados">
+        <h1 style="margin-bottom: 30px;">Catálogo de Videos Publicados</h1>
+        <div class="grid" id="grid-publicados"></div>
+    </div>
+
+    <div class="container" id="tab-config">
+        <h1 style="margin-bottom: 30px;">Configuración del Motor</h1>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <div class="config-panel">
+                <h3>Tópicos de Búsqueda</h3>
+                <div class="config-list" id="lista-topicos"></div>
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <input type="text" id="input-topico" class="form-control" placeholder="Ej. MacOS...">
+                    <button class="btn-primary" onclick="añadirTopico()">➕</button>
+                </div>
+            </div>
+
+            <div class="config-panel">
+                <h3>Canales de Competencia</h3>
+                <div class="config-list" id="lista-canales"></div>
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <input type="text" id="input-canal" class="form-control" placeholder="Ej. NateGentile">
+                    <button class="btn-primary" onclick="añadirCanal()">➕</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="config-panel" style="margin-top: 30px; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <h3 style="margin: 0;">Videos por tópico</h3>
+                <p style="color: var(--text-muted); font-size: 14px; margin-top: 5px;" id="texto-calculo">Calculando...</p>
+            </div>
+            <div class="spinbutton">
+                <button onclick="cambiarVideos(-1)">-</button>
+                <input type="number" id="input-videos" min="1" max="10" value="1" onchange="guardarVideos()">
+                <button onclick="cambiarVideos(1)">+</button>
+            </div>
+        </div>
+
+        <div class="config-panel" style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <h3 style="margin: 0;">Antigüedad máxima</h3>
+                <p style="color: var(--text-muted); font-size: 14px; margin-top: 5px;" id="texto-calculo-meses">Cargando...</p>
+            </div>
+            <div class="spinbutton">
+                <button onclick="cambiarMeses(-1)">-</button>
+                <input type="number" id="input-meses" min="1" max="12" value="3" onchange="guardarMeses()">
+                <button onclick="cambiarMeses(1)">+</button>
+            </div>
+        </div>
+
+        <div class="config-panel" style="margin-top: 30px;">
+            <h3>API Key de Gemini</h3>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">Necesaria para generar el SEO.</p>
+            <div style="display: flex; gap: 10px;">
+                <input type="password" id="input-api-key" class="form-control" placeholder="Pega aquí tu llave AIza...">
+                <button class="btn-primary" onclick="guardarApiKey()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE DETALLE -->
+    <div class="modal-overlay" id="modalDetalle">
+        <div class="modal-content">
+            <button class="modal-close" onclick="cerrarModal()">×</button>
+            <p style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase; margin-top: 0;">Idea Original</p>
+            <h2 id="modal-titulo" style="color: var(--text-muted); margin-top: 5px; margin-bottom: 20px;">Cargando...</h2>
+
+            <div id="bloque-titulo-viral" style="display: none; background: rgba(84, 95, 255, 0.1); border: 1px solid var(--accent); border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: var(--accent); font-size: 12px; font-weight: bold; text-transform: uppercase;">🔥 Título Viral para YouTube</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="modal-titulo-viral-input" class="form-control" style="font-size: 16px; font-weight: bold;">
+                    <button class="btn-primary" onclick="guardarTituloViral(event)">Guardar</button>
+                </div>
+            </div>
+
+            <div class="seo-container">
+                <div class="seo-box">
+                    <span class="seo-label">📝 Descripción SEO</span>
+                    <p class="seo-text" id="modal-desc">...</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <div class="seo-box" style="flex: 1;">
+                        <span class="seo-label">🏷️ Tags SEO</span>
+                        <p class="seo-text" id="modal-tags">...</p>
+                    </div>
+                    <div class="seo-box" style="flex: 1;">
+                        <span class="seo-label">🎯 Gancho (5s)</span>
+                        <p class="seo-text" id="modal-gancho">...</p>
+                    </div>
+                </div>
+            </div>
+
+            <label style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 13px; font-weight: bold; text-transform: uppercase;">📝 Guión y Notas</label>
+            <div id="editor-container" style="height: 250px; background: #111; color: #ddd; margin-bottom: 20px; border-radius: 8px; overflow-y: auto;"></div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-danger" id="btn-eliminar-modal">🗑️ Eliminar</button>
+                    <button class="btn-primary" id="btn-generar-seo-modal" style="display:none;">⚡ Generar SEO</button>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" onclick="cerrarModal()">Cerrar</button>
+                    <button class="btn-primary" id="btn-guardar-guion">💾 Guardar Guión</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL INGRESO MANUAL -->
+    <div class="modal-overlay" id="modalManual">
+        <div class="modal-content">
+            <button class="modal-close" onclick="cerrarModalManual()">×</button>
+            <h2 style="color: var(--accent); margin-top: 0; margin-bottom: 5px;">Añadir Idea Manual</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 25px;">Pega un link de YouTube para autocompletar el título, o escríbelo manualmente.</p>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 13px; font-weight: bold; text-transform: uppercase;">Link de YouTube (Opcional)</label>
+                <input type="text" id="input-url-manual" class="form-control" placeholder="https://www.youtube.com/watch?v=..." oninput="autodetectarUrl()">
+                <p id="feedback-url" style="font-size: 12px; margin-top: 5px; display: none;"></p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 13px; font-weight: bold; text-transform: uppercase;">Título de tu Idea</label>
+                <input type="text" id="input-titulo-manual" class="form-control" placeholder="El título de tu video...">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn-secondary" onclick="cerrarModalManual()">Cancelar</button>
+                <button class="btn-primary" onclick="guardarIdeaManual()">💾 Guardar Idea</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalVideo" onclick="cerrarVideoModal(event)">
+        <div class="modal-content" style="background: #000; padding: 15px; max-width: 900px;" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="cerrarVideoModal()">×</button>
+            <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px;">
+                <iframe id="iframe-video" src="" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Entornos virtuales
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Archivos secretos y de configuración local
+client_secrets.json
+token.json
+*.env
+gemini_api_key.txt
+
+# Base de datos (tu historial local)
+*.db
+*.sqlite
+*.sqlite3
+
+# Caché y archivos temporales del sistema
+cache/
+.DS_Store
+Thumbs.db
+
+# Si tus plantillas contienen videos pesados o muchos assets, 
+# descomenta la siguiente línea para no subir archivos gigantes:
+plantillas-es/
+
+# Archivos pesados de video
+*.mp4
+*.mov
+*.png
+*.jpg
+*.drift
