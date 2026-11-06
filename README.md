@@ -21,3 +21,12 @@ Herramienta local de gestión de contenido para YouTube. Permite explorar tenden
 4. Configura las credenciales de YouTube:
 *   Descarga tu archivo client_secrets.json desde Google Cloud Console.
 *   Colócalo en la carpeta .seo/.
+
+## 🎮 Uso:
+
+1. Ejecuta la aplicación:
+   ```bash
+   python app.py
+2. Abre tu navegador y ve a http://127.0.0.1:5000.
+3. Ve a la pestaña Configuración y pega tu API Key de Gemini.
+4. ¡Empieza a explorar tendencias y crear contenido!
