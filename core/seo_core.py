@@ -4,8 +4,12 @@ import re
 import time
 import random
 import html
+import logging
 from urllib.parse import quote_plus
 from google import genai
+
+# Configuramos el logger para este módulo
+logger = logging.getLogger(__name__)
 
 PREFIJOS_INTENCION = ["trucos", "tutorial", "cómo", "guía", "aprende", "gratis", "para"]
 
@@ -123,7 +127,7 @@ def buscar_en_youtube(query, limit=50, max_dias=90):
             _extraer_videos_json(json.loads(m.group(1)), limit, resultados, max_dias)
             return resultados
     except Exception as e:
-        print(f"Error buscando en YT: {e}")
+        logger.error(f"Error buscando en YT: {e}")
     return []
 
 def obtener_tendencias(topicos, videos_por_topico, meses_antiguedad):
@@ -135,18 +139,18 @@ def obtener_tendencias(topicos, videos_por_topico, meses_antiguedad):
         prefijo = random.choice(PREFIJOS_INTENCION)
         query = f"{prefijo} {topico}"
         
-        print(f"🔎 Buscando en YouTube: '{query}' (Filtrando > {max_dias} días)...")
+        logger.info(f"Buscando en YouTube: '{query}' (Filtrando > {max_dias} días)...")
         try:
             res = buscar_en_youtube(query, limit=50, max_dias=max_dias) 
             res_ordenados = sorted(res, key=lambda x: x['vistas'], reverse=True)
             res_finales = res_ordenados[:limite]
             
-            print(f"   -> Encontrados {len(res_finales)} videos válidos.")
+            logger.info(f"Encontrados {len(res_finales)} videos válidos para '{topico}'.")
             for r in res_finales:
                 r["seed_origen"] = topico
                 resultados_finales.append(r)
         except Exception as e:
-            print(f"   -> ⚠️ Error con el topico '{topico}': {e}")
+            logger.error(f"Error con el topico '{topico}': {e}")
         time.sleep(1.5) 
         
     return resultados_finales
@@ -174,17 +178,27 @@ Devuelve ESTRICTAMENTE este formato JSON (sin markdown, sin texto extra):
     for intento in range(3):
         try:
             modelo = modelos_fallback[intento % len(modelos_fallback)]
+            logger.info(f"Generando SEO con modelo {modelo} (Intento {intento+1}/3)...")
             res = client.models.generate_content(model=modelo, contents=prompt)
             texto_limpio = res.text.replace("```json", "").replace("```", "").strip()
-            return json.loads(texto_limpio)
+            
+            # Validación robusta del JSON
+            try:
+                data = json.loads(texto_limpio)
+                logger.info("SEO generado exitosamente.")
+                return data
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parseando JSON de Gemini: {e}. Texto recibido: {texto_limpio[:200]}...")
+                continue # Intentar de nuevo
+                
         except Exception as e:
-            print(f"Error en intento {intento+1} con Gemini: {e}")
+            logger.error(f"Error en intento {intento+1} con Gemini: {e}")
             time.sleep(2)
+    
+    logger.error("Se agotaron los intentos para generar SEO.")
     return None
 
-# --- NUEVA FUNCIÓN: Extraer título desde URL de YouTube ---
 def obtener_titulo_por_url(url):
-    """Extrae el título y el video_id desde una URL de YouTube."""
     m = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', url)
     if not m:
         return None, None
@@ -197,15 +211,56 @@ def obtener_titulo_por_url(url):
     }
     try:
         r = requests.get(f"https://www.youtube.com/watch?v={video_id}", headers=headers, timeout=10)
-        # 1. Meta og:title
         match = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', r.text)
         if match:
             return html.unescape(match.group(1)), video_id
-        
-        # 2. Fallback: ytInitialPlayerResponse
         match = re.search(r'"title"\s*:\s*"([^"]+)"', r.text)
         if match:
             return match.group(1), video_id
     except Exception as e:
-        print(f"Error obteniendo título: {e}")
+        logger.error(f"Error obteniendo título: {e}")
     return None, video_id
+
+def generar_guion_con_ia(video_id, api_key):
+    if not api_key or not video_id:
+        return None
+        
+    from google.genai import types
+    client = genai.Client(api_key=api_key)
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    
+    prompt = """Actúa como un experto creador de contenido técnico y tutoriales.
+    Analiza el video de YouTube que se te ha proporcionado.
+    
+    Basándote en el contenido real que se explica en el video, genera un guion estructurado paso a paso.
+    Requisitos:
+    1. Usa un esquema estructurado tipo guion (Títulos, pasos a seguir, listas).
+    2. Menciona las herramientas o programas que se usan en el video.
+    3. Usa HTML para el formato (etiquetas <h3>, <p>, <ul>, <li>, <strong>). 
+    4. NO uses bloques de código markdown (```html). Devuelve SOLO el HTML puro.
+    5. OBLIGATORIO: Al final del guion, crea una sección con el título <h3>🔗 Enlaces Mencionados</h3> y una lista (<ul>) con todos los enlaces, URLs o sitios web que se mencionen o muestren en el video. Si no hay ninguno, escribe un párrafo diciendo "No se mencionaron enlaces explícitos en el video".
+    """
+
+    modelos_fallback = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']
+    
+    for intento in range(3):
+        try:
+            modelo = modelos_fallback[intento % len(modelos_fallback)]
+            logger.info(f"Generando guion IA con modelo {modelo} (Intento {intento+1}/3)...")
+            
+            contenido = types.Content(
+                parts=[
+                    types.Part(text=prompt),
+                    types.Part(file_data=types.FileData(file_uri=url))
+                ]
+            )
+            
+            res = client.models.generate_content(model=modelo, contents=contenido)
+            texto_limpio = res.text.replace("```html", "").replace("```", "").strip()
+            logger.info("Guion IA generado exitosamente.")
+            return texto_limpio
+        except Exception as e:
+            logger.error(f"Error generando guion IA (intento {intento+1}): {e}")
+            time.sleep(3)
+    logger.error("Se agotaron los intentos para generar el guion con IA.")
+    return None

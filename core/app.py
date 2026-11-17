@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 import database
 import seo_core
 import os
@@ -6,6 +6,7 @@ import shutil
 import json
 import re
 import subprocess
+import logging
 from datetime import datetime
 
 # YouTube API
@@ -25,8 +26,38 @@ RUTA_PRODUCCION = os.path.join(RUTA_SOFTWARE, "A. Producción")
 RUTA_PUBLICADOS = os.path.join(RUTA_SOFTWARE, "B. Publicados")
 RUTA_CLIENT_SECRETS = os.path.join(RUTA_SEO, "client_secrets.json")
 RUTA_TOKEN = os.path.join(RUTA_SEO, "token.json")
+RUTA_LOG = os.path.join(os.path.dirname(__file__), 'app.log')
+
+# --- CONFIGURACIÓN DEL LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.FileHandler(RUTA_LOG, encoding='utf-8'),
+        logging.StreamHandler() # Para verlo también en la terminal
+    ]
+)
+logger = logging.getLogger(__name__)
 
 database.init_db()
+
+def html_a_md(html_content):
+    if not html_content: return ""
+    texto = html_content
+    texto = texto.replace('<strong>', '**').replace('</strong>', '**')
+    texto = texto.replace('<b>', '**').replace('</b>', '**')
+    texto = texto.replace('<em>', '*').replace('</em>', '*')
+    texto = texto.replace('<i>', '*').replace('</i>', '*')
+    texto = texto.replace('<h1>', '# ').replace('</h1>', '\n\n')
+    texto = texto.replace('<h2>', '## ').replace('</h2>', '\n\n')
+    texto = texto.replace('<h3>', '### ').replace('</h3>', '\n\n')
+    texto = texto.replace('<li>', '- ').replace('</li>', '\n')
+    texto = texto.replace('<ul>', '').replace('</ul>', '\n')
+    texto = texto.replace('<ol>', '').replace('</ol>', '\n')
+    texto = texto.replace('<p>', '').replace('</p>', '\n\n')
+    texto = texto.replace('<br>', '\n').replace('<br/>', '\n')
+    texto = re.sub(r'<[^>]+>', '', texto)
+    return texto.strip()
 
 def obtener_servicio_youtube():
     SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
@@ -82,6 +113,30 @@ def pintar_carpeta_verde(ruta_carpeta):
 def index():
     return render_template('index.html')
 
+# --- NUEVA API: Leer Logs ---
+@app.route('/api/logs', methods=['GET'])
+def api_get_logs():
+    if os.path.exists(RUTA_LOG):
+        try:
+            with open(RUTA_LOG, 'r', encoding='utf-8') as f:
+                lineas = f.readlines()
+                # Devolvemos las últimas 200 líneas para no saturar el navegador
+                return jsonify({"logs": "".join(lineas[-200:])})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"logs": "El archivo de log aún no se ha creado."})
+
+# --- NUEVA API: Limpiar Logs ---
+@app.route('/api/logs/limpiar', methods=['POST'])
+def api_clear_logs():
+    try:
+        if os.path.exists(RUTA_LOG):
+            open(RUTA_LOG, 'w').close()
+            logger.info("Archivo de logs limpiado manualmente.")
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/produccion', methods=['GET'])
 def api_get_produccion():
     proyectos = database.get_proyectos_por_estado('produccion')
@@ -103,6 +158,7 @@ def api_crear_proyecto():
     datos = request.json
     if datos.get('titulo'):
         database.insertar_proyecto(datos.get('titulo'), datos.get('video_id'))
+        logger.info(f"Proyecto creado desde explorador: {datos.get('titulo')}")
         return jsonify({"status": "ok"})
     return jsonify({"error": "Faltan datos"}), 400
 
@@ -110,12 +166,12 @@ def api_crear_proyecto():
 def api_crear_proyecto_manual():
     datos = request.json
     titulo = str(datos.get('titulo') or '').strip()
-    # CORRECCIÓN: Aseguramos que video_id no sea None antes de hacer .strip()
     video_id = str(datos.get('video_id') or '').strip() or None 
     
     if not titulo: 
         return jsonify({"error": "El título es obligatorio."}), 400
     database.insertar_proyecto(titulo, video_id)
+    logger.info(f"Proyecto creado manualmente: {titulo}")
     return jsonify({"status": "ok"})
 
 @app.route('/api/detectar_link', methods=['POST'])
@@ -144,6 +200,7 @@ def api_guardar_guion(id):
     cursor.execute("UPDATE proyectos SET guion = ? WHERE id = ?", (request.json.get('guion', ''), id))
     conn.commit()
     conn.close()
+    logger.info(f"Guion guardado para proyecto ID {id}")
     return jsonify({"status": "ok"})
 
 @app.route('/api/proyecto/<int:id>/guardar_titulo', methods=['POST'])
@@ -168,6 +225,7 @@ def api_guardar_titulo(id):
             with open(ruta_json, "w", encoding="utf-8") as file:
                 json.dump(data, file, ensure_ascii=False, indent=2)
     conn.close()
+    logger.info(f"Título viral actualizado para proyecto ID {id}")
     return jsonify({"status": "ok"})
 
 @app.route('/api/proyecto/<int:id>', methods=['DELETE'])
@@ -181,12 +239,39 @@ def api_eliminar_proyecto(id):
     cursor.execute("DELETE FROM proyectos WHERE id = ?", (id,))
     conn.commit()
     conn.close()
+    logger.warning(f"Proyecto ID {id} eliminado permanentemente.")
     return jsonify({"status": "ok"})
+
+@app.route('/api/proyecto/<int:id>/abrir_carpeta', methods=['POST'])
+def api_abrir_carpeta(id):
+    conn = database.sqlite3.connect(database.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT ruta_carpeta FROM proyectos WHERE id = ?", (id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row and row[0] and os.path.exists(row[0]):
+        try:
+            uid = os.getuid()
+            env = os.environ.copy()
+            env["DISPLAY"] = ":0"
+            env["XDG_RUNTIME_DIR"] = f"/run/user/{uid}"
+            env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path=/run/user/{uid}/bus"
+            xauth = os.path.expanduser('~/.Xauthority')
+            if os.path.exists(xauth):
+                env["XAUTHORITY"] = xauth
+            subprocess.Popen(['nautilus', row[0]], env=env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return jsonify({"status": "ok"})
+        except Exception as e:
+            logger.error(f"Error al abrir carpeta: {e}")
+            return jsonify({"error": f"Error al abrir: {str(e)}"}), 500
+    return jsonify({"error": "La carpeta no existe en el disco."}), 404
 
 @app.route('/api/proyecto/<int:id>/generar_seo', methods=['POST'])
 def api_generar_seo(id):
     api_key = database.get_ajuste("gemini_api_key")
-    if not api_key: return jsonify({"error": "Configura tu API Key de Gemini."}), 400
+    if not api_key: 
+        return jsonify({"error": "Configura tu API Key de Gemini."}), 400
 
     conn = database.sqlite3.connect(database.DB_PATH)
     conn.row_factory = database.sqlite3.Row
@@ -199,8 +284,11 @@ def api_generar_seo(id):
         return jsonify({"error": "Proyecto no válido o ya procesado."}), 400
 
     titulo_base = proyecto['titulo']
+    logger.info(f"Iniciando generación de SEO para: {titulo_base}")
+    
     seo_data = seo_core.generar_seo_gemini(titulo_base, api_key)
-    if not seo_data: return jsonify({"error": "Error con Gemini."}), 500
+    if not seo_data: 
+        return jsonify({"error": "Error al conectar con Gemini. Revisa los logs para más detalles."}), 500
 
     nombre_base = re.sub(r'[^\w\s-]', '', titulo_base).strip()
     os.makedirs(RUTA_PRODUCCION, exist_ok=True)
@@ -237,9 +325,68 @@ def api_generar_seo(id):
         conn.commit()
         conn.close()
 
+        logger.info(f"Carpeta creada exitosamente: {nombre_final}")
         return jsonify({"status": "ok", "mensaje": f"Carpeta creada: {nombre_final}"})
     except Exception as e:
+        logger.error(f"Error al crear carpeta: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/proyecto/<int:id>/generar_guion_ia', methods=['POST'])
+def api_generar_guion_ia(id):
+    api_key = database.get_ajuste("gemini_api_key")
+    if not api_key: return jsonify({"error": "Configura tu API Key de Gemini."}), 400
+
+    conn = database.sqlite3.connect(database.DB_PATH)
+    conn.row_factory = database.sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM proyectos WHERE id = ?", (id,))
+    proyecto = cursor.fetchone()
+    conn.close()
+
+    if not proyecto:
+        return jsonify({"error": "Proyecto no encontrado."}), 404
+
+    video_id = proyecto['video_id_inspiracion']
+    if not video_id:
+        return jsonify({"error": "Este proyecto no tiene un link de video de inspiración."}), 400
+
+    logger.info(f"Generando guion IA para el video: {video_id}")
+    guion_generado = seo_core.generar_guion_con_ia(video_id, api_key)
+    
+    if guion_generado:
+        return jsonify({"status": "ok", "guion": guion_generado})
+    else:
+        return jsonify({"error": "Error al analizar el video. Revisa los logs."}), 500
+
+@app.route('/api/proyecto/<int:id>/exportar_guion', methods=['GET'])
+def api_exportar_guion(id):
+    conn = database.sqlite3.connect(database.DB_PATH)
+    conn.row_factory = database.sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM proyectos WHERE id = ?", (id,))
+    proyecto = cursor.fetchone()
+    conn.close()
+
+    if not proyecto:
+        return "Proyecto no encontrado", 404
+
+    md_content = f"# {proyecto['titulo_viral'] or proyecto['titulo']}\n\n"
+    
+    if proyecto['video_id_inspiracion']:
+        md_content += f"🔗 **Video de Inspiración:** https://www.youtube.com/watch?v={proyecto['video_id_inspiracion']}\n\n"
+    
+    md_content += "## 🎯 SEO y Metadatos\n"
+    md_content += f"**Gancho:** {proyecto['seo_gancho'] or 'N/A'}\n\n"
+    md_content += f"**Descripción:**\n{proyecto['seo_descripcion'] or 'N/A'}\n\n"
+    md_content += f"**Tags:** {proyecto['seo_tags'] or 'N/A'}\n\n"
+    md_content += "---\n\n"
+    md_content += "## 📝 Guion del Video\n\n"
+    
+    guion_md = html_a_md(proyecto['guion'])
+    md_content += guion_md if guion_md else "*El guion está vacío.*"
+
+    filename = f"Guion_{proyecto['id']}.md"
+    return Response(md_content, mimetype='text/markdown', headers={"Content-Disposition": f"attachment;filename={filename}"})
 
 @app.route('/api/proyecto/<int:id>/subir', methods=['POST'])
 def api_subir_video(id):
@@ -267,6 +414,7 @@ def api_subir_video(id):
         meta = json.load(f)
 
     try:
+        logger.info(f"Subiendo video a YouTube: {meta.get('titulo')}")
         body = {
             "snippet": {
                 "title": meta.get("titulo", "Sin título"),
@@ -297,12 +445,13 @@ def api_subir_video(id):
         fecha_pub = datetime.now().strftime("%d-%b-%Y")
         database.marcar_como_publicado(id, video_id_youtube, fecha_pub)
 
+        logger.info(f"Video subido exitosamente. ID: {video_id_youtube}")
         return jsonify({"status": "ok", "mensaje": "Video subido a YouTube exitosamente."})
 
     except Exception as e:
+        logger.error(f"Error al subir video: {e}")
         return jsonify({"error": str(e)}), 500
 
-# --- NUEVA API: REVERTIR PUBLICACIÓN ---
 @app.route('/api/proyecto/<int:id>/revertir', methods=['POST'])
 def api_revertir_proyecto(id):
     conn = database.sqlite3.connect(database.DB_PATH)
@@ -329,6 +478,7 @@ def api_revertir_proyecto(id):
     conn.commit()
     conn.close()
 
+    logger.warning(f"Proyecto ID {id} revertido a Producción.")
     return jsonify({"status": "ok", "mensaje": "Proyecto revertido a Producción. Recuerda borrar el video en YouTube manualmente."})
 
 @app.route('/api/explorar', methods=['GET'])
@@ -337,12 +487,14 @@ def api_explorar():
         topicos = [t['nombre'] for t in database.get_topicos()]
         videos_por_topico = database.get_ajuste('videos_por_topico')
         meses_antiguedad = database.get_ajuste('meses_antiguedad')
+        logger.info("Iniciando exploración de tendencias.")
         resultados = seo_core.obtener_tendencias(topicos, videos_por_topico, meses_antiguedad)
         ignorados = database.get_videos_ignorados()
         resultados_filtrados = [r for r in resultados if r['video_id'] not in ignorados]
+        logger.info(f"Exploración finalizada. {len(resultados_filtrados)} resultados nuevos.")
         return jsonify(resultados_filtrados)
     except Exception as e:
-        print(f"Error en explorar: {e}")
+        logger.error(f"Error en explorar: {e}")
         return jsonify([])
 
 @app.route('/api/descartar', methods=['POST'])
@@ -397,4 +549,4 @@ def api_set_gemini_key():
     return jsonify({"status": "ok"})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)

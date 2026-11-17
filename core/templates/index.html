@@ -41,59 +41,82 @@
         <div class="grid" id="grid-publicados"></div>
     </div>
 
+    <!-- PESTAÑA CONFIGURACIÓN CON SUB-PESTAÑAS -->
     <div class="container" id="tab-config">
-        <h1 style="margin-bottom: 30px;">Configuración del Motor</h1>
+        <h1 style="margin-bottom: 20px;">Configuración del Motor</h1>
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-            <div class="config-panel">
-                <h3>Tópicos de Búsqueda</h3>
-                <div class="config-list" id="lista-topicos"></div>
-                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                    <input type="text" id="input-topico" class="form-control" placeholder="Ej. MacOS...">
-                    <button class="btn-primary" onclick="añadirTopico()">➕</button>
+        <div style="display: flex; gap: 20px; border-bottom: 1px solid #333; margin-bottom: 30px; padding-bottom: 10px;">
+            <button class="btn-secondary" onclick="cambiarSubtab('general', this)" id="btn-sub-general" style="background-color: var(--accent); color: white; border: none;">⚙️ General</button>
+            <button class="btn-secondary" onclick="cambiarSubtab('logs', this)" id="btn-sub-logs">📄 Visor de Logs</button>
+        </div>
+
+        <!-- SUB-PESTAÑA GENERAL -->
+        <div id="subtab-general">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                <div class="config-panel">
+                    <h3>Tópicos de Búsqueda</h3>
+                    <div class="config-list" id="lista-topicos"></div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <input type="text" id="input-topico" class="form-control" placeholder="Ej. MacOS...">
+                        <button class="btn-primary" onclick="añadirTopico()">➕</button>
+                    </div>
+                </div>
+
+                <div class="config-panel">
+                    <h3>Canales de Competencia</h3>
+                    <div class="config-list" id="lista-canales"></div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <input type="text" id="input-canal" class="form-control" placeholder="Ej. NateGentile">
+                        <button class="btn-primary" onclick="añadirCanal()">➕</button>
+                    </div>
                 </div>
             </div>
 
-            <div class="config-panel">
-                <h3>Canales de Competencia</h3>
-                <div class="config-list" id="lista-canales"></div>
-                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                    <input type="text" id="input-canal" class="form-control" placeholder="Ej. NateGentile">
-                    <button class="btn-primary" onclick="añadirCanal()">➕</button>
+            <div class="config-panel" style="margin-top: 30px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <h3 style="margin: 0;">Videos por tópico</h3>
+                    <p style="color: var(--text-muted); font-size: 14px; margin-top: 5px;" id="texto-calculo">Calculando...</p>
+                </div>
+                <div class="spinbutton">
+                    <button onclick="cambiarVideos(-1)">-</button>
+                    <input type="number" id="input-videos" min="1" max="10" value="1" onchange="guardarVideos()">
+                    <button onclick="cambiarVideos(1)">+</button>
+                </div>
+            </div>
+
+            <div class="config-panel" style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <h3 style="margin: 0;">Antigüedad máxima</h3>
+                    <p style="color: var(--text-muted); font-size: 14px; margin-top: 5px;" id="texto-calculo-meses">Cargando...</p>
+                </div>
+                <div class="spinbutton">
+                    <button onclick="cambiarMeses(-1)">-</button>
+                    <input type="number" id="input-meses" min="1" max="12" value="3" onchange="guardarMeses()">
+                    <button onclick="cambiarMeses(1)">+</button>
+                </div>
+            </div>
+
+            <div class="config-panel" style="margin-top: 30px;">
+                <h3>API Key de Gemini</h3>
+                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">Necesaria para generar el SEO y guiones.</p>
+                <div style="display: flex; gap: 10px;">
+                    <input type="password" id="input-api-key" class="form-control" placeholder="Pega aquí tu llave AIza...">
+                    <button class="btn-primary" onclick="guardarApiKey()">Guardar</button>
                 </div>
             </div>
         </div>
 
-        <div class="config-panel" style="margin-top: 30px; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-                <h3 style="margin: 0;">Videos por tópico</h3>
-                <p style="color: var(--text-muted); font-size: 14px; margin-top: 5px;" id="texto-calculo">Calculando...</p>
-            </div>
-            <div class="spinbutton">
-                <button onclick="cambiarVideos(-1)">-</button>
-                <input type="number" id="input-videos" min="1" max="10" value="1" onchange="guardarVideos()">
-                <button onclick="cambiarVideos(1)">+</button>
-            </div>
-        </div>
-
-        <div class="config-panel" style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-                <h3 style="margin: 0;">Antigüedad máxima</h3>
-                <p style="color: var(--text-muted); font-size: 14px; margin-top: 5px;" id="texto-calculo-meses">Cargando...</p>
-            </div>
-            <div class="spinbutton">
-                <button onclick="cambiarMeses(-1)">-</button>
-                <input type="number" id="input-meses" min="1" max="12" value="3" onchange="guardarMeses()">
-                <button onclick="cambiarMeses(1)">+</button>
-            </div>
-        </div>
-
-        <div class="config-panel" style="margin-top: 30px;">
-            <h3>API Key de Gemini</h3>
-            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">Necesaria para generar el SEO.</p>
-            <div style="display: flex; gap: 10px;">
-                <input type="password" id="input-api-key" class="form-control" placeholder="Pega aquí tu llave AIza...">
-                <button class="btn-primary" onclick="guardarApiKey()">Guardar</button>
+        <!-- SUB-PESTAÑA LOGS -->
+        <div id="subtab-logs" style="display: none;">
+            <div class="config-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">Registro de Eventos</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-primary" onclick="cargarLogs()">🔄 Actualizar</button>
+                        <button class="btn-danger" onclick="limpiarLogs()">🗑️ Limpiar Logs</button>
+                    </div>
+                </div>
+                <pre id="log-content" style="background: #000; color: #00ff00; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 13px; height: 500px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #333;">Cargando logs...</pre>
             </div>
         </div>
     </div>
@@ -133,13 +156,15 @@
             <label style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 13px; font-weight: bold; text-transform: uppercase;">📝 Guión y Notas</label>
             <div id="editor-container" style="height: 250px; background: #111; color: #ddd; margin-bottom: 20px; border-radius: 8px; overflow-y: auto;"></div>
             
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="display: flex; gap: 10px;">
                     <button class="btn-danger" id="btn-eliminar-modal">🗑️ Eliminar</button>
-                    <button class="btn-primary" id="btn-generar-seo-modal" style="display:none;">⚡ Generar SEO</button>
+                    <button class="btn-secondary" id="btn-generar-seo-modal" style="display:none;">⚡ Generar SEO</button>
                 </div>
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button class="btn-secondary" onclick="cerrarModal()">Cerrar</button>
+                    <button class="btn-secondary" id="btn-exportar-guion">📥 Exportar .md</button>
+                    <button class="btn-primary" id="btn-generar-guion-ia" style="background-color: #8e44ad;">🧠 Autocompletar IA</button>
                     <button class="btn-primary" id="btn-guardar-guion">💾 Guardar Guión</button>
                 </div>
             </div>

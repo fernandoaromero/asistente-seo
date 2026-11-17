@@ -33,6 +33,70 @@ function cambiarTab(idTab, elementoTab) {
     if (idTab === 'publicados') cargarPublicados();
 }
 
+// --- LÓGICA DE SUB-PESTAÑAS EN CONFIGURACIÓN ---
+function cambiarSubtab(idSubtab, elementoTab) {
+    // Ocultar todas las sub-pestañas
+    document.getElementById('subtab-general').style.display = 'none';
+    document.getElementById('subtab-logs').style.display = 'none';
+    
+    // Resetear estilos de botones
+    document.getElementById('btn-sub-general').style.backgroundColor = 'transparent';
+    document.getElementById('btn-sub-general').style.color = 'var(--text-main)';
+    document.getElementById('btn-sub-general').style.border = '1px solid #444';
+    
+    document.getElementById('btn-sub-logs').style.backgroundColor = 'transparent';
+    document.getElementById('btn-sub-logs').style.color = 'var(--text-main)';
+    document.getElementById('btn-sub-logs').style.border = '1px solid #444';
+
+    // Mostrar la pestaña seleccionada
+    document.getElementById('subtab-' + idSubtab).style.display = 'block';
+    
+    // Resaltar el botón seleccionado
+    elementoTab.style.backgroundColor = 'var(--accent)';
+    elementoTab.style.color = 'white';
+    elementoTab.style.border = 'none';
+
+    // Si es logs, cargar los datos automáticamente
+    if (idSubtab === 'logs') {
+        cargarLogs();
+    }
+}
+
+function cargarLogs() {
+    const pre = document.getElementById('log-content');
+    pre.innerText = "Cargando logs...";
+    
+    fetch('/api/logs')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                pre.innerText = "Error al cargar logs: " + data.error;
+            } else {
+                pre.innerText = data.logs || "No hay registros aún.";
+                // Auto-scroll al final
+                pre.scrollTop = pre.scrollHeight;
+            }
+        })
+        .catch(() => {
+            pre.innerText = "Error de conexión al cargar los logs.";
+        });
+}
+
+function limpiarLogs() {
+    if (!confirm("¿Estás seguro de que quieres borrar todos los registros de logs?")) return;
+    
+    fetch('/api/logs/limpiar', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                alert("Error: " + data.error);
+            } else {
+                document.getElementById('log-content').innerText = "Logs limpiados.";
+            }
+        });
+}
+
+// --- LÓGICA DE PRODUCCIÓN ---
 function cargarProduccion() {
     fetch('/api/produccion')
         .then(res => res.json())
@@ -59,6 +123,10 @@ function cargarProduccion() {
                     botonAccion = `<button class="btn-action btn-play" style="cursor:not-allowed; opacity:0.5;" title="Falta el video .mp4 o la miniatura .png">⏳ Esperando archivos</button>`;
                 }
 
+                const botonCarpeta = p.estado !== 'pendiente' 
+                    ? `<button class="btn-action btn-play" onclick="abrirCarpeta(${p.id})" title="Abrir directorio del proyecto">📂 Carpeta</button>` 
+                    : '';
+
                 card.innerHTML = `
                     <button class="btn-delete-card" onclick="eliminarProyecto(${p.id}, '${p.titulo.replace(/'/g, "\\'")}')" title="Eliminar">🗑️</button>
                     <div>
@@ -70,15 +138,25 @@ function cargarProduccion() {
                             : (p.trio_listo ? '<span class="badge badge-ready" style="background:var(--green); color:#000;">Listo para Subir</span>' : '<span class="badge badge-ready">En Edición</span>')}
                         <div class="card-meta" style="margin-top: 10px;">Aprobado el: ${p.fecha_creacion}</div>
                     </div>
-                    <div class="card-actions">
+                    <div class="card-actions" style="flex-wrap: wrap;">
                         <button class="btn-action btn-play" onclick="abrirVideo('${p.video_id_inspiracion}')">▶ Inspiración</button>
                         <button class="btn-action btn-details" onclick="abrirDetalle(${p.id})">📝 Guión</button>
+                        ${botonCarpeta}
                         ${botonAccion}
                     </div>
                 `;
                 grid.appendChild(card);
             });
         });
+}
+
+function abrirCarpeta(id) {
+    fetch(`/api/proyecto/${id}/abrir_carpeta`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) alert(data.error);
+        })
+        .catch(() => alert("Error al conectar con el servidor."));
 }
 
 function cargarPublicados() {
@@ -114,7 +192,6 @@ function cargarPublicados() {
         });
 }
 
-// --- NUEVA FUNCIÓN: REVERTIR PUBLICACIÓN ---
 function revertirPublicacion(id) {
     if (!confirm("⚠️ ¿Estás seguro de devolver este proyecto a Producción?\n\n(Nota: El video NO se borrará de YouTube, deberás borrarlo tú manualmente desde YouTube Studio).")) return;
 
@@ -126,7 +203,7 @@ function revertirPublicacion(id) {
                 return;
             }
             alert("✅ " + data.mensaje);
-            cargarPublicados(); // Recargamos la lista de publicados
+            cargarPublicados();
         })
         .catch(() => alert("Error al conectar con el servidor."));
 }
@@ -329,6 +406,48 @@ document.getElementById('btn-guardar-guion').addEventListener('click', function(
         boton.style.backgroundColor = "var(--green)";
         setTimeout(() => boton.style.backgroundColor = "var(--accent)", 2000);
     });
+});
+
+document.getElementById('btn-exportar-guion').addEventListener('click', function() {
+    if (!idProyectoActual) return;
+    window.location.href = `/api/proyecto/${idProyectoActual}/exportar_guion`;
+});
+
+document.getElementById('btn-generar-guion-ia').addEventListener('click', function() {
+    if (!idProyectoActual) return;
+    
+    const textoActual = quill.getText().trim();
+    if (textoActual.length > 0) {
+        if (!confirm("⚠️ El editor ya tiene texto. Si continúas, la IA sobrescribirá todo el contenido actual. ¿Deseas continuar?")) return;
+    }
+
+    const boton = this;
+    const textoOriginal = boton.innerText;
+    boton.innerText = "⏳ Analizando video...";
+    boton.disabled = true;
+
+    fetch(`/api/proyecto/${idProyectoActual}/generar_guion_ia`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                alert("❌ " + data.error);
+                boton.innerText = textoOriginal;
+                boton.disabled = false;
+                return;
+            }
+            
+            quill.clipboard.dangerouslyPasteHTML(data.guion);
+            boton.innerText = "✅ Guion Generado";
+            setTimeout(() => {
+                boton.innerText = textoOriginal;
+                boton.disabled = false;
+            }, 2000);
+        })
+        .catch(() => {
+            alert("Error crítico al conectar con el servidor.");
+            boton.innerText = textoOriginal;
+            boton.disabled = false;
+        });
 });
 
 function eliminarProyecto(id, titulo) {
